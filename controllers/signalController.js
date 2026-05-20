@@ -28,15 +28,17 @@ const getInbox = async (req, res) => {
 };
 
 const createSignal = async (req, res) => {
-  const {
-    title,
-    contentType,
-    content,
-    classification,
-    expiryTime,
-    recipientIds,
-  } = req.body;
+  const { title, contentType, classification, expiryTime } = req.body;
+  let { content, recipientIds } = req.body;
   const senderId = req.user.id;
+
+  // Handle recipientIds - if it's a string, convert to array
+  if (typeof recipientIds === "string") {
+    recipientIds = [recipientIds];
+  }
+  if (!recipientIds || !recipientIds.length) {
+    return res.status(400).json({ message: "Recipient IDs required" });
+  }
 
   try {
     const countResult = await pool.query("SELECT COUNT(*) FROM signals");
@@ -48,14 +50,13 @@ const createSignal = async (req, res) => {
     if (contentType === "text" && content) {
       encryptedContent = Buffer.from(encrypt(content));
     }
-
     if (req.file) {
       filePath = req.file.path;
     }
 
     const signalResult = await pool.query(
       `INSERT INTO signals (signal_number, title, content_type, content_encrypted, file_path, classification, sender_id, expiry_time)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
       [
         signalNumber,
         title,
@@ -68,40 +69,25 @@ const createSignal = async (req, res) => {
       ],
     );
 
-    const signal = signalResult.rows[0];
+    const signalId = signalResult.rows[0].id;
 
-    if (recipientIds && recipientIds.length > 0) {
-      for (const recipientId of recipientIds) {
-        await pool.query(
-          "INSERT INTO signal_recipients (signal_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-          [signal.id, recipientId],
-        );
-        await pool.query(
-          "INSERT INTO signal_receipts (signal_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-          [signal.id, recipientId],
-        );
-      }
+    for (const recipientId of recipientIds) {
+      await pool.query(
+        "INSERT INTO signal_recipients (signal_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        [signalId, recipientId],
+      );
+      await pool.query(
+        "INSERT INTO signal_receipts (signal_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        [signalId, recipientId],
+      );
     }
 
-    await logAction({
-      userId: senderId,
-      action: "SIGNAL_CREATED",
-      entityType: "signal",
-      entityId: signal.id,
-      ipAddress: req.ip,
-      metadata: { classification, signalNumber },
-    });
-
-    res.status(201).json({
-      message: "Signal created successfully.",
-      signal: { id: signal.id, signalNumber },
-    });
+    res.status(201).json({ message: "Signal created", signalId, signalNumber });
   } catch (error) {
-    console.error("Create signal error:", error.message);
-    res.status(500).json({ message: "Server error." });
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
   }
 };
-
 const viewSignal = async (req, res) => {
   const { id } = req.params;
   const userId = req.user.id;

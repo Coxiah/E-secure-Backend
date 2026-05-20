@@ -18,6 +18,7 @@ const fileFilter = (req, file, cb) => {
     "image/png",
     "audio/mpeg",
     "audio/wav",
+    "audio/x-wav",
   ];
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
