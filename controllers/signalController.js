@@ -1,5 +1,6 @@
 const pool = require("../config/db");
 const path = require("path");
+const fs = require("fs");
 const { v4: uuidv4 } = require("uuid");
 const { encrypt, decrypt } = require("../services/encryptionService");
 const {
@@ -32,7 +33,6 @@ const createSignal = async (req, res) => {
   let { content, recipientIds } = req.body;
   const senderId = req.user.id;
 
-  // Handle recipientIds - if it's a string, convert to array
   if (typeof recipientIds === "string") {
     recipientIds = [recipientIds];
   }
@@ -88,6 +88,7 @@ const createSignal = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
 const viewSignal = async (req, res) => {
   const { id } = req.params;
   const userId = req.user.id;
@@ -218,10 +219,58 @@ const logScreenshot = async (req, res) => {
   }
 };
 
+const serveFile = async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user.id;
+
+  try {
+    const recipientCheck = await pool.query(
+      "SELECT 1 FROM signal_recipients WHERE signal_id = $1 AND user_id = $2",
+      [id, userId],
+    );
+    if (recipientCheck.rows.length === 0) {
+      return res.status(403).json({ message: "Access denied." });
+    }
+
+    const signalResult = await pool.query(
+      "SELECT file_path, content_type FROM signals WHERE id = $1",
+      [id],
+    );
+    const signal = signalResult.rows[0];
+    if (!signal || !signal.file_path) {
+      return res.status(404).json({ message: "File not found." });
+    }
+
+    const fullPath = path.join(process.cwd(), signal.file_path);
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ message: "File missing on server." });
+    }
+
+    await logAction({
+      userId,
+      action: "FILE_DOWNLOADED",
+      entityType: "signal",
+      entityId: id,
+      ipAddress: req.ip,
+    });
+
+    let contentType = "application/octet-stream";
+    if (signal.content_type === "pdf") contentType = "application/pdf";
+    if (signal.content_type === "image") contentType = "image/jpeg";
+    if (signal.content_type === "audio") contentType = "audio/mpeg";
+    res.setHeader("Content-Type", contentType);
+    res.sendFile(fullPath);
+  } catch (error) {
+    console.error("File serve error:", error);
+    res.status(500).json({ message: "Server error." });
+  }
+};
+
 module.exports = {
   getInbox,
   createSignal,
   viewSignal,
   acknowledgeSignal,
   logScreenshot,
+  serveFile,
 };

@@ -2,13 +2,22 @@ const jwt = require("jsonwebtoken");
 require("dotenv").config();
 
 const protect = (req, res, next) => {
-  const authHeader = req.headers.authorization;
+  let token;
 
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ message: "Not authorized. Please log in." });
+  // Check Authorization header
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.split(" ")[1];
   }
 
-  const token = authHeader.split(" ")[1];
+  // If not in header, check query string
+  if (!token && req.query.token) {
+    token = req.query.token;
+  }
+
+  if (!token) {
+    return res.status(401).json({ message: "Not authorized. Please log in." });
+  }
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
