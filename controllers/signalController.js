@@ -9,6 +9,7 @@ const {
   stampQROnImage,
 } = require("../services/watermarkService");
 const { logAction } = require("../services/auditService");
+const eventService = require("../services/eventService");
 
 const getInbox = async (req, res) => {
   const userId = req.user.id;
@@ -80,6 +81,13 @@ const createSignal = async (req, res) => {
         "INSERT INTO signal_receipts (signal_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
         [signalId, recipientId],
       );
+      // Emit real-time event for each recipient
+      eventService.emitNewSignal(recipientId, {
+        signalId,
+        signalNumber,
+        title,
+        classification,
+      });
     }
 
     res.status(201).json({ message: "Signal created", signalId, signalNumber });
@@ -189,6 +197,10 @@ const acknowledgeSignal = async (req, res) => {
       entityId: id,
       ipAddress: req.ip,
     });
+
+    // Emit real-time acknowledgment event
+    eventService.emitAcknowledgment(id, userId, new Date().toISOString());
+
     res.json({ message: "Signal acknowledged." });
   } catch (error) {
     console.error("Acknowledge error:", error.message);

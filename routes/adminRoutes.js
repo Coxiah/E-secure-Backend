@@ -8,6 +8,8 @@ const {
   updateUserStatus,
   getAuditLogs,
   traceWatermark,
+  downloadSignalReport,
+  updateEmergencyAlarmSetting,
 } = require("../controllers/adminController");
 const { protect, authorize } = require("../middleware/authMiddleware");
 
@@ -24,5 +26,7 @@ router.patch("/devices/:deviceId/approve", approveDevice);
 router.patch("/devices/:deviceId/revoke", revokeDevice);
 router.get("/audit-logs", getAuditLogs);
 router.post("/trace-watermark", traceWatermark);
+router.get("/signals/:signalId/report", downloadSignalReport);
+router.patch("/settings/emergency-alarm", updateEmergencyAlarmSetting);
 
 module.exports = router;

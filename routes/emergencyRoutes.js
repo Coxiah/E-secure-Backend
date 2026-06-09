@@ -4,6 +4,7 @@ const {
   sendEmergencyBroadcast,
   triggerSmsFallback,
   getEmergencyStatus,
+  getEmergencyAlarmSetting,
 } = require("../controllers/emergencyController");
 const { protect, authorize } = require("../middleware/authMiddleware");
 
@@ -24,5 +25,6 @@ router.get(
   authorize("super_admin", "state_command_admin", "area_command_admin"),
   getEmergencyStatus,
 );
+router.get("/alarm-setting", protect, getEmergencyAlarmSetting);
 
 module.exports = router;

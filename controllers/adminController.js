@@ -165,6 +165,76 @@ const traceWatermark = async (req, res) => {
   }
 };
 
+const {
+  generateExcelReport,
+  generatePDFReport,
+} = require("../services/reportService");
+
+const downloadSignalReport = async (req, res) => {
+  const { signalId } = req.params;
+  const { format } = req.query; // 'excel' or 'pdf'
+  try {
+    // Get signal number for filename
+    const signalResult = await pool.query(
+      `SELECT signal_number FROM signals WHERE id = $1`,
+      [signalId],
+    );
+    if (signalResult.rows.length === 0)
+      return res.status(404).json({ message: "Signal not found" });
+    const signalNumber = signalResult.rows[0].signal_number;
+
+    if (format === "excel") {
+      const workbook = await generateExcelReport(signalId, signalNumber);
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename=signal-${signalNumber}-report.xlsx`,
+      );
+      await workbook.xlsx.write(res);
+      res.end();
+    } else if (format === "pdf") {
+      const pdfBuffer = await generatePDFReport(signalId, signalNumber);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename=signal-${signalNumber}-report.pdf`,
+      );
+      res.send(pdfBuffer);
+    } else {
+      res
+        .status(400)
+        .json({ message: "Invalid format. Use ?format=excel or pdf" });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+const updateEmergencyAlarmSetting = async (req, res) => {
+  const { enabled } = req.body; // boolean
+  try {
+    await pool.query(
+      `UPDATE settings SET value = $1 WHERE key = 'emergency_alarm_enabled'`,
+      [enabled ? "true" : "false"],
+    );
+    await logAction({
+      userId: req.user.id,
+      action: "SETTING_UPDATED",
+      entityType: "setting",
+      ipAddress: req.ip,
+      metadata: { key: "emergency_alarm_enabled", value: enabled },
+    });
+    res.json({ message: "Emergency alarm setting updated." });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 module.exports = {
   getAllUsers,
   getPendingDevices,
@@ -173,4 +243,6 @@ module.exports = {
   updateUserStatus,
   getAuditLogs,
   traceWatermark,
+  downloadSignalReport,
+  updateEmergencyAlarmSetting,
 };

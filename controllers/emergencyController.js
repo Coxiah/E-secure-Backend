@@ -5,6 +5,7 @@ const {
   sendPushNotification,
 } = require("../services/notificationService");
 const { logAction } = require("../services/auditService");
+const eventService = require("../services/eventService");
 
 const sendEmergencyBroadcast = async (req, res) => {
   const { title, content, recipientIds } = req.body;
@@ -73,6 +74,15 @@ const sendEmergencyBroadcast = async (req, res) => {
         );
       }
     }
+
+    // Emit real-time emergency event to all connected clients
+    eventService.emitEmergency({
+      signalId: signal.id,
+      signalNumber,
+      title,
+      content,
+      recipientCount: recipients.length,
+    });
 
     await logAction({
       userId: senderId,
@@ -150,8 +160,22 @@ const getEmergencyStatus = async (req, res) => {
   }
 };
 
+const getEmergencyAlarmSetting = async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT value FROM settings WHERE key = 'emergency_alarm_enabled'`,
+    );
+    const enabled = result.rows[0]?.value === "true";
+    res.json({ emergency_alarm_enabled: enabled });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error." });
+  }
+};
+
 module.exports = {
   sendEmergencyBroadcast,
   triggerSmsFallback,
   getEmergencyStatus,
+  getEmergencyAlarmSetting,
 };
