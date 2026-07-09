@@ -4,9 +4,10 @@ const fs = require("fs");
 const { v4: uuidv4 } = require("uuid");
 const { encrypt, decrypt } = require("../services/encryptionService");
 const {
-  generateWatermarkCode,
+  generateWatermarkPayload,
   saveWatermarkLog,
-  stampQROnImage,
+  embedGhostQR,
+  embedTextWatermark,
 } = require("../services/watermarkService");
 const { logAction } = require("../services/auditService");
 const eventService = require("../services/eventService");
@@ -128,8 +129,9 @@ const viewSignal = async (req, res) => {
       });
     }
 
-    const watermarkCode = generateWatermarkCode(id, userId);
-    await saveWatermarkLog(id, userId, watermarkCode);
+    const deviceId = req.headers["x-device-id"] || "unknown-device";
+    const watermarkPayload = generateWatermarkPayload(id, userId, deviceId);
+    await saveWatermarkLog(id, userId, deviceId, watermarkPayload);
 
     await pool.query(
       `UPDATE signal_receipts SET viewed_at = NOW(), delivery_method = 'push'
@@ -153,17 +155,18 @@ const viewSignal = async (req, res) => {
       contentType: signal.content_type,
       createdAt: signal.created_at,
       expiryTime: signal.expiry_time,
-      watermarkCode,
+      watermarkCode: watermarkPayload,
     };
 
     if (signal.content_type === "text" && signal.content_encrypted) {
-      responseData.content = decrypt(signal.content_encrypted.toString());
+      const decryptedContent = decrypt(signal.content_encrypted.toString());
+      responseData.content = embedTextWatermark(decryptedContent, watermarkPayload);
     }
 
     if (signal.content_type === "image" && signal.file_path) {
-      const watermarkedImageBuffer = await stampQROnImage(
+      const watermarkedImageBuffer = await embedGhostQR(
         signal.file_path,
-        watermarkCode,
+        watermarkPayload,
       );
       responseData.imageData = watermarkedImageBuffer.toString("base64");
     }
